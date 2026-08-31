@@ -15,7 +15,7 @@ This fork keeps the original tile-based image method, but updates the downloader
 - Retries temporary connection resets and network errors
 - Resume support: already downloaded pages are reused with `[EXISTS]`
 - Continues past failed pages and reports them at the end
-- Works with modern Python 3 and macOS paths
+- Works with modern Python 3 on macOS and Windows
 - Creates the final PDF directly with Pillow
 
 ## Setup on macOS
@@ -25,6 +25,24 @@ brew install python
 /opt/homebrew/bin/python3 -m venv nbvenv
 source nbvenv/bin/activate
 pip install -r requirements.txt
+```
+
+## Setup on Windows
+
+Install Python 3 from python.org and make sure Python is added to PATH during installation.
+
+Then open PowerShell or Command Prompt in the folder containing `nbdownload.py`:
+
+```powershell
+py -m venv nbvenv
+nbvenv\Scripts\activate
+pip install -r requirements.txt
+```
+
+If `py` is not available, use `python` instead:
+
+```powershell
+python -m venv nbvenv
 ```
 
 ## Find the Book ID
@@ -47,13 +65,7 @@ The Book ID is:
 
 If the book requires login, find a working `default.jpg` request in Developer Tools and copy the value of the `Cookie` request header.
 
-Create a plain-text file:
-
-```bash
-nano nb_cookie.txt
-```
-
-Paste only the cookie value, without `Cookie:`.
+Create a plain-text file called `nb_cookie.txt` in the same folder as the script and paste only the cookie value, without `Cookie:`.
 
 Do not share this file. It contains your active NB session.
 
@@ -75,6 +87,12 @@ python nbdownload.py 2020050448518 \
   --end 250 \
   --cookie-file nb_cookie.txt \
   --referer 'https://www.nb.no/items/97425fae2080c80dcf13a989f44ecd1d'
+```
+
+On Windows PowerShell, the same command can be written on one line:
+
+```powershell
+python nbdownload.py 2020050448518 --start 1 --end 250 --cookie-file nb_cookie.txt --referer "https://www.nb.no/items/97425fae2080c80dcf13a989f44ecd1d"
 ```
 
 Downloaded pages are saved in `BOOK_ID_pages/` and the final PDF is saved as `BOOK_ID.pdf`.
