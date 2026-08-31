@@ -1,8 +1,8 @@
-# NB.no Downloader – Logged-in Book PDF Downloader
+# NB.no Downloader – Authenticated-Access Book PDF Downloader
 
 **Updated and tested against NB.no in August 2026.**
 
-Small Python downloader for **NB.no / Nasjonalbiblioteket** books that can be opened in a logged-in browser session but are awkward to save as a complete local PDF.
+Small Python downloader for **NB.no / Nasjonalbiblioteket** books available through an authenticated browser session but awkward to save as a complete local PDF.
 
 Improved fork of [akselsd/NB.no-Downloader](https://github.com/akselsd/NB.no-Downloader). This fork keeps the original tile-based image method and adds the session handling and reliability needed for the authenticated NB.no case I wanted to solve.
 
