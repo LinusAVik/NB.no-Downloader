@@ -1,8 +1,22 @@
 # NB.no-Downloader
 
-Improved fork of [akselsd/NB.no-Downloader](https://github.com/akselsd/NB.no-Downloader).
+**Updated and tested against NB.no in August 2026.**
 
-This version keeps the original tile-based download method, but adds authenticated sessions, macOS/Python 3 support, automatic retries, resume support and more reliable PDF creation.
+Improved fork of [akselsd/NB.no-Downloader](https://github.com/akselsd/NB.no-Downloader). The original script was last updated years ago and did not work out-of-the-box for the logged-in NB.no book I tested in 2026.
+
+This fork keeps the original tile-based image method, but updates the downloader for current use.
+
+## Why this fork exists
+
+- Tested successfully on NB.no in August 2026
+- Supports logged-in NB sessions using a cookie file and Referer
+- Keeps the tile-based downloader instead of relying on `/full/` image requests
+- Reconstructs high-resolution pages from NB image tiles
+- Retries temporary connection resets and network errors
+- Resume support: already downloaded pages are reused with `[EXISTS]`
+- Continues past failed pages and reports them at the end
+- Works with modern Python 3 and macOS paths
+- Creates the final PDF directly with Pillow
 
 ## Setup on macOS
 
@@ -68,5 +82,7 @@ Downloaded pages are saved in `BOOK_ID_pages/` and the final PDF is saved as `BO
 If the script stops, run the same command again. Existing pages are reused and shown as `[EXISTS]`.
 
 Network failures are retried up to 5 times. Pages that still fail are skipped and reported at the end.
+
+**Note:** creating a PDF with the same Book ID overwrites an existing `BOOK_ID.pdf`. Keep a backup if you are running a smaller test after downloading a full book.
 
 Use only on material you have the right to access and download.
