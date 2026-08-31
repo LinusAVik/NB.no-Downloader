@@ -1,23 +1,23 @@
-# NB.no Downloader – Authenticated-Access Book PDF Downloader
+# NB.no-Downloader fork for authenticated book sessions
 
-**Updated and tested against NB.no in August 2026.**
+Small Python fork of [akselsd/NB.no-Downloader](https://github.com/akselsd/NB.no-Downloader), updated for one specific use case: downloading books that are already accessible through an authenticated NB.no browser session.
 
-Downloads and reconstructs PDF files from **NB.no / Nasjonalbiblioteket** content accessible through the user's authenticated session. The tool does not bypass authentication or DRM.
+It keeps the original tile-based approach, reconstructs the pages, resumes interrupted downloads, retries temporary network failures, and creates a PDF.
 
-Improved fork of [akselsd/NB.no-Downloader](https://github.com/akselsd/NB.no-Downloader). This fork keeps the original tile-based image method and adds the session handling and reliability needed for the authenticated NB.no case I wanted to solve.
+The tool does not bypass authentication or DRM. It only reuses access already available in the user's logged-in NB.no session.
+
+**Tested on one logged-in NB.no book in August 2026.**
 
 ## What it does
 
 - Uses an existing logged-in NB.no session from a cookie file
-- Keeps the tile-based downloader instead of relying on `/full/` image requests
-- Reconstructs high-resolution book pages from NB image tiles
-- Downloads scanned pages and combines them into a PDF
+- Downloads and reconstructs page tiles
+- Creates full-page JPGs and a PDF
 - Retries temporary connection resets and network errors
-- Resume support: already downloaded pages are reused with `[EXISTS]`
+- Reuses already downloaded pages with `[EXISTS]`
 - Continues past failed pages and reports them at the end
-- Works with modern Python 3 on macOS and Windows
 
-This is intentionally a small, focused fork rather than a general-purpose NB.no media downloader.
+This is a small, focused fork rather than a general-purpose NB.no downloader.
 
 ## Setup on macOS
 
@@ -56,7 +56,7 @@ Example:
 URN:NBN:no-nb_digibok_2020050448518_0153
 ```
 
-The NB.no Book ID is:
+The Book ID is:
 
 ```text
 2020050448518
@@ -70,7 +70,7 @@ Create a plain-text file called `nb_cookie.txt` in the same folder as the script
 
 Do not share this file. It contains your active NB session.
 
-## Download the book
+## Run
 
 ```bash
 python nbdownload.py BOOK_ID \
