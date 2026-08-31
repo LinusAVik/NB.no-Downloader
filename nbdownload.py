@@ -1,167 +1,299 @@
-import urllib.request
-import urllib.error
-import os
+import argparse
 import io
-import sys
+import socket
+import ssl
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
 from PIL import Image
-from fpdf import FPDF
 
 
 class Book:
-
-
-    def __init__(self, book_id, length=None):
+    def __init__(self, book_id, cookie=None, referer=None):
         self.id = str(book_id)
-        self.length = length
-        self.rows = -1
-        self.cols = -1
-        self.img_size = [0, 0]
-        self.params = {"book_id": str(book_id), "page_nr": "1", "long_page_nr": "0001", "col": "0", "row": "0"}
-        self.retry = 2 # Establish a counter for download error retries
-        self.path = book_id + "_temp_image_folder\\"
-        self.fullpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), self.path)
-        if not os.path.exists(self.fullpath):
-            os.mkdir(self.path)
-        self.url_template = "https://www.nb.no/services/image/resolver?url_ver=geneza&urn=URN:NBN:no-nb_digibok_{book_id}_{long_page_nr}&maxLevel=5&level=5&col={col}&row={row}&resX=9999&resY=9999&tileWidth=1024&tileHeight=1024&pg_id={page_nr}"
-        self._find_rows_cols_and_img_size()
+        self.cookie = cookie
+        self.referer = referer or "https://www.nb.no/"
+        self.failed_pages = []
 
-    def download_page(self, page_nr, retry):
+        self.url_template = (
+            "https://www.nb.no/services/image/resolver?"
+            "url_ver=geneza&"
+            "urn=URN:NBN:no-nb_digibok_{book_id}_{page}&"
+            "maxLevel=5&"
+            "level=5&"
+            "col={col}&"
+            "row={row}&"
+            "resX=9999&"
+            "resY=9999&"
+            "tileWidth=1024&"
+            "tileHeight=1024&"
+            "pg_id={page_nr}"
+        )
 
-        # Get the partial images and stich the image together
-        page = Image.new("RGB", tuple(self.img_size), "white") # Any unused space in the image will be white
-        x_offset = 0
-        y_offset = 0
-        for row in range(self.rows):
-            col = 0
-            while col < self.cols:
-                self.update_params(page_nr, col, row)
-                try:
-                    response = (urllib.request.urlopen(self.url_template.format(**self.params))).read()
-                except urllib.error.HTTPError:
-                    print("Download Error: Is the page number, column or row too high?")
-                    print("Tried to access "+self.url_template.format(**self.params))
-                    # Check retry counter, prevents program from hanging if the download error isn't overcome with three retries
-                    if self.retry >= 0:
-                        print("Retrying.... "+str(self.retry)+ " tries remaining.")
-                        self.retry -= 1
-                        col -= 1
-                    else:
-                        print("All retries failed")
-                except:
-                    print("Other error")
-                    exit()
-                else:
-                    partial_page = Image.open(io.BytesIO(response))
-                    page.paste(partial_page, (x_offset, y_offset))
-                    x_offset+=partial_page.width
+        self.output_dir = Path(f"{self.id}_pages")
+        self.output_dir.mkdir(exist_ok=True)
 
-                # Finished this row
-                if col == self.cols-1:
-                    x_offset = 0
-                    y_offset += partial_page.height
-                col += 1
+    @staticmethod
+    def page_name(page_nr):
+        if isinstance(page_nr, int):
+            return str(page_nr).zfill(4)
+        return str(page_nr)
 
-        page.save(self.id+"_temp_image_folder\\"+str(page_nr)+".jpg")
+    def request_tile(self, page, page_nr, col, row):
+        url = self.url_template.format(
+            book_id=self.id,
+            page=page,
+            page_nr=page_nr,
+            col=col,
+            row=row,
+        )
 
-    def find_book_length(self):
-        # Search semi-linearly for the books length
-        delta = 100
-        j = 100
-        while True:
-            self.update_params(j,0,0)
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": self.referer,
+            "Accept": "image/*,*/*;q=0.8",
+        }
+
+        if self.cookie:
+            headers["Cookie"] = self.cookie
+
+        for attempt in range(1, 6):
             try:
-                urllib.request.urlopen(self.url_template.format(**self.params))
+                request = urllib.request.Request(url, headers=headers)
 
-            except urllib.error.HTTPError:
-                # Too far
-                if delta == 1:
-                    return j-1
-                j -= delta
-                delta = int(delta / 10)
-                j += delta
-            else:
-                j += delta
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    data = response.read()
 
+                image = Image.open(io.BytesIO(data))
+                image.load()
+                return image.convert("RGB")
 
-    def download_book(self):
-        # Sets PDF size - Might want to make a variable based on image size....
-        pdf = FPDF(format="Letter")
-        if self.length is None:
-            print("Length not specified, calculating book length")
-            self.length = self.find_book_length()
-            print("Book length found: ",self.length)
+            except urllib.error.HTTPError as error:
+                # NB also uses these responses when a requested tile/page
+                # is outside the available image grid.
+                if error.code in (400, 403, 404):
+                    return None
 
-        print("Downloading book", self.id)
-        retry = 2
+                print(
+                    f"  HTTP {error.code} on tile {col},{row} "
+                    f"- attempt {attempt}/5"
+                )
 
-        # Front Cover:
-        self.download_page("C1", retry)
-        self.retry = 2
-        pdf.add_page()
-        pdf.image(self.id+"_temp_image_folder\\" + "C1" + ".jpg", 0, 0, 210, 297)
+            except (
+                ConnectionResetError,
+                TimeoutError,
+                urllib.error.URLError,
+                socket.timeout,
+                ssl.SSLError,
+            ) as error:
+                print(
+                    f"  connection error on tile {col},{row} "
+                    f"- attempt {attempt}/5: {error}"
+                )
 
-        for page in range(1, self.length+1):
-            self.download_page(page, retry)
-            print("Page", page, "download complete")
-            self.retry = 2
+            if attempt < 5:
+                time.sleep(3)
 
-        for page in range(1, self.length+1):
-            pdf.add_page()
-            pdf.image(self.id+"_temp_image_folder\\" + str(page) + ".jpg", 0, 0, 210, 297)
+        return False
 
-        # Back Cover
-        self.download_page("C3", retry)
-        pdf.add_page()
-        pdf.image(self.id + "_temp_image_folder\\" + "C3" + ".jpg", 0, 0, 210, 297)
+    def load_existing_page(self, page):
+        path = self.output_dir / f"{page}.jpg"
 
-        pdf.output(self.id + ".pdf")
-        print("Pdf saved of book",self.id)
+        if not path.exists():
+            return None
 
-    def get_file_name(self,col,row):
-        return self.id+"_"+self.params["long_page_nr"]+"_"+str(row)+"_"+str(col)
+        try:
+            image = Image.open(path)
+            image.load()
+            print(f"[EXISTS] {page}")
+            return image.convert("RGB")
+        except Exception:
+            print(f"[BAD FILE] {page}, downloading again")
+            return None
 
-    def update_params(self, page_nr = None, col = None, row = None):
-        if page_nr is not None:
-            page_nr = str(page_nr)
-            self.params["page_nr"] = page_nr
-            if page_nr.isdigit():
-                self.params["long_page_nr"] = page_nr.rjust(4, "0")
-            else:
-                self.params["long_page_nr"] = page_nr
+    def mark_failed(self, page, reason=None):
+        if page not in self.failed_pages:
+            self.failed_pages.append(page)
 
-        if col is not None :
-            self.params["col"] = str(col)
+        if reason:
+            print(f"[FAILED] {page}: {reason}")
+        else:
+            print(f"[FAILED] {page}")
 
-        if row is not None:
-            self.params["row"] = str(row)
+    def download_page(self, page_nr):
+        page = self.page_name(page_nr)
 
-    def _find_rows_cols_and_img_size(self):
-        # Rows
+        existing = self.load_existing_page(page)
+        if existing is not None:
+            return existing
+
+        print(f"\nReading page {page}...")
+        tiles = {}
+
+        # Detect columns from the first row.
+        col = 0
         while True:
-            self.rows += 1
-            self.update_params(1, 0, self.rows)
-            try:
-                response = (urllib.request.urlopen(self.url_template.format(**self.params))).read()
-                image = Image.open(io.BytesIO(response))
-                self.img_size[1] += image.height
-            except urllib.error.HTTPError:
+            image = self.request_tile(page, page_nr, col, 0)
+
+            if image is False:
+                self.mark_failed(page, f"tile {col},0 failed after retries")
+                return None
+
+            if image is None:
                 break
-        #Cols
+
+            tiles[(col, 0)] = image
+            print(f"  column {col} found ({image.width}x{image.height})")
+            col += 1
+            time.sleep(0.25)
+
+        cols = col
+        if cols == 0:
+            print(f"[skip] {page}: no tiles")
+            return None
+
+        # Detect rows from the first column.
+        row = 1
         while True:
-            self.cols += 1
-            self.update_params(1, self.cols,0)
-            try:
-                response = urllib.request.urlopen(self.url_template.format(**self.params)).read()
-                image = Image.open(io.BytesIO(response))
-                self.img_size[0] += image.width
-            except urllib.error.HTTPError:
+            image = self.request_tile(page, page_nr, 0, row)
+
+            if image is False:
+                self.mark_failed(page, f"tile 0,{row} failed after retries")
+                return None
+
+            if image is None:
                 break
+
+            tiles[(0, row)] = image
+            print(f"  row {row} found ({image.width}x{image.height})")
+            row += 1
+            time.sleep(0.25)
+
+        rows = row
+        print(f"  grid: {cols} x {rows}")
+
+        # Download all remaining tiles.
+        for row in range(rows):
+            for col in range(cols):
+                if (col, row) in tiles:
+                    continue
+
+                image = self.request_tile(page, page_nr, col, row)
+
+                if image is False:
+                    self.mark_failed(page, f"tile {col},{row} failed after retries")
+                    return None
+
+                if image is None:
+                    self.mark_failed(page, f"missing tile {col},{row}")
+                    return None
+
+                tiles[(col, row)] = image
+                time.sleep(0.25)
+
+        widths = [tiles[(col, 0)].width for col in range(cols)]
+        heights = [tiles[(0, row)].height for row in range(rows)]
+        total_width = sum(widths)
+        total_height = sum(heights)
+
+        full_page = Image.new("RGB", (total_width, total_height), "white")
+
+        y = 0
+        for row in range(rows):
+            x = 0
+            for col in range(cols):
+                image = tiles[(col, row)]
+                full_page.paste(image, (x, y))
+                x += image.width
+            y += tiles[(0, row)].height
+
+        output_path = self.output_dir / f"{page}.jpg"
+        full_page.save(output_path, "JPEG", quality=92)
+
+        print(f"[OK] {page}: {total_width}x{total_height}")
+        return full_page
+
+    def download_book(self, start, end, include_cover=True):
+        requested_pages = []
+
+        if include_cover:
+            requested_pages.append("C1")
+
+        requested_pages.extend(range(start, end + 1))
+
+        if include_cover:
+            requested_pages.append("C3")
+
+        # Download missing pages. Existing JPEGs are reused automatically.
+        for page_nr in requested_pages:
+            self.download_page(page_nr)
+
+        # Build the PDF from every successfully saved requested page.
+        pdf_images = []
+
+        for page_nr in requested_pages:
+            page = self.page_name(page_nr)
+            path = self.output_dir / f"{page}.jpg"
+
+            if not path.exists():
+                continue
+
+            try:
+                image = Image.open(path)
+                image.load()
+                pdf_images.append(image.convert("RGB"))
+            except Exception:
+                print(f"[BAD FILE] {page}")
+
+        if not pdf_images:
+            print("\nNo pages available for PDF.")
+            return
+
+        pdf_path = Path(f"{self.id}.pdf")
+        pdf_images[0].save(
+            pdf_path,
+            "PDF",
+            save_all=True,
+            append_images=pdf_images[1:],
+            resolution=150,
+        )
+
+        print()
+        print(f"PDF saved: {pdf_path.resolve()}")
+        print(f"Pages included: {len(pdf_images)}")
+
+        if self.failed_pages:
+            print()
+            print("Pages that failed:")
+            print(", ".join(self.failed_pages))
+            print("Run the same command again to retry only missing pages.")
+
 
 def main():
-# Request book_id from console arguments
-  book_id = sys.argv[1]
-  b = Book(book_id)
-  b.download_book()
+    parser = argparse.ArgumentParser(
+        description="Download NB.no page tiles and combine them into a PDF."
+    )
+    parser.add_argument("book_id", help="NB digibok ID")
+    parser.add_argument("--start", type=int, default=1, help="First numbered page")
+    parser.add_argument("--end", type=int, required=True, help="Last numbered page to try")
+    parser.add_argument("--cookie-file", help="Plain-text file containing the Cookie header value")
+    parser.add_argument("--referer", help="URL of the book's nb.no item page")
+    parser.add_argument("--no-cover", action="store_true", help="Do not request C1/C3 covers")
+    args = parser.parse_args()
+
+    cookie = None
+    if args.cookie_file:
+        cookie = Path(args.cookie_file).expanduser().read_text().strip()
+
+    book = Book(args.book_id, cookie=cookie, referer=args.referer)
+    book.download_book(
+        args.start,
+        args.end,
+        include_cover=not args.no_cover,
+    )
+
 
 if __name__ == "__main__":
     main()
