@@ -1,18 +1,14 @@
-# NB.no Downloader – Norwegian National Library PDF Downloader
+# NB.no Downloader – Logged-in Book PDF Downloader
 
 **Updated and tested against NB.no in August 2026.**
 
-Python downloader for books and scanned documents from **NB.no**, the **Nasjonalbiblioteket (National Library of Norway / Norwegian National Library)**. It downloads NB image tiles, reconstructs high-resolution pages, resumes interrupted downloads, and creates a PDF.
+Small Python downloader for **NB.no / Nasjonalbiblioteket** books that can be opened in a logged-in browser session but are awkward to save as a complete local PDF.
 
-Improved fork of [akselsd/NB.no-Downloader](https://github.com/akselsd/NB.no-Downloader). The original script was last updated years ago and did not work out-of-the-box for the logged-in NB.no book I tested in 2026.
+Improved fork of [akselsd/NB.no-Downloader](https://github.com/akselsd/NB.no-Downloader). This fork keeps the original tile-based image method and adds the session handling and reliability needed for the authenticated NB.no case I wanted to solve.
 
-This fork keeps the original tile-based image method, but updates the downloader for current NB.no use.
+## What it does
 
-## Features
-
-- NB.no / Nasjonalbiblioteket book downloader written in Python
-- Tested successfully on NB.no in August 2026
-- Supports logged-in NB sessions using a cookie file and Referer
+- Uses an existing logged-in NB.no session from a cookie file
 - Keeps the tile-based downloader instead of relying on `/full/` image requests
 - Reconstructs high-resolution book pages from NB image tiles
 - Downloads scanned pages and combines them into a PDF
@@ -20,7 +16,8 @@ This fork keeps the original tile-based image method, but updates the downloader
 - Resume support: already downloaded pages are reused with `[EXISTS]`
 - Continues past failed pages and reports them at the end
 - Works with modern Python 3 on macOS and Windows
-- Creates the final PDF directly with Pillow
+
+This is intentionally a small, focused fork rather than a general-purpose NB.no media downloader.
 
 ## Setup on macOS
 
@@ -51,7 +48,7 @@ python -m venv nbvenv
 
 ## Find the NB.no Book ID
 
-Open the book on nb.no, then open Developer Tools → Network and find a `default.jpg` request.
+Open the book on nb.no while logged in, then open Developer Tools → Network and find a `default.jpg` request.
 
 Example:
 
@@ -65,15 +62,15 @@ The NB.no Book ID is:
 2020050448518
 ```
 
-## Cookie for logged-in NB.no books
+## Use your logged-in session
 
-If the book requires login, find a working `default.jpg` request in Developer Tools and copy the value of the `Cookie` request header.
+Find a working `default.jpg` request in Developer Tools and copy the value of the `Cookie` request header.
 
 Create a plain-text file called `nb_cookie.txt` in the same folder as the script and paste only the cookie value, without `Cookie:`.
 
 Do not share this file. It contains your active NB session.
 
-## Download an NB.no book
+## Download the book
 
 ```bash
 python nbdownload.py BOOK_ID \
