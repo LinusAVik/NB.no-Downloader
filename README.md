@@ -2,7 +2,7 @@
 
 **Updated and tested against NB.no in August 2026.**
 
-Small Python downloader for **NB.no / Nasjonalbiblioteket** books available through an authenticated browser session but awkward to save as a complete local PDF.
+Downloads and reconstructs PDF files from **NB.no / Nasjonalbiblioteket** content accessible through the user's authenticated session. The tool does not bypass authentication or DRM.
 
 Improved fork of [akselsd/NB.no-Downloader](https://github.com/akselsd/NB.no-Downloader). This fork keeps the original tile-based image method and adds the session handling and reliability needed for the authenticated NB.no case I wanted to solve.
 
