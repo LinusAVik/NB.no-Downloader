@@ -1,0 +1,6 @@
+nb_cookie.txt
+nbvenv/
+*_pages/
+*.pdf
+__pycache__/
+.DS_Store
